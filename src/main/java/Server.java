@@ -14,28 +14,31 @@ import org.xbill.DNS.Message;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class Server {
     private static Logger logger = LoggerFactory.getLogger(Server.class);
 
-    private class IncomingMessageHandler extends SimpleChannelInboundHandler<DatagramPacket> {
-        protected QueryHandler queryHandler;
+    private class QueryHandleTask implements Runnable {
+        private ChannelHandlerContext context;
+        private DatagramPacket message;
+        private byte[] messageBytes;
+        private QueryHandler queryHandler;
 
-        public IncomingMessageHandler(QueryHandler dispatcher) {
-            this.queryHandler = dispatcher;
+        public QueryHandleTask(QueryHandler queryHandler, ChannelHandlerContext context, DatagramPacket message, byte[] messageBytes) {
+            this.context = context;
+            this.message = message;
+            this.messageBytes = messageBytes;
+            this.queryHandler = queryHandler;
         }
 
         @Override
-        protected void messageReceived(ChannelHandlerContext context, DatagramPacket message) {
-            InetSocketAddress clientAddress = message.sender();
+        public void run() {
+            InetSocketAddress clientAddress = this.message.sender();
             Thread.currentThread().setName("query" + clientAddress.toString());
-            // extract message bytes
-            ByteBuf messageContent = message.content();
-            byte[] messageBytes = new byte[messageContent.readableBytes()];
-            messageContent.readBytes(messageBytes);
-            // construct DNS message
             try {
-                Message query = new Message(messageBytes);
+                Message query = new Message(this.messageBytes);
                 Message response = this.queryHandler.handle(query);
                 context.writeAndFlush(new DatagramPacket(Unpooled.copiedBuffer(response.toWire()), clientAddress));
             } catch (IOException e) {
@@ -44,10 +47,30 @@ public class Server {
         }
     }
 
+    private class IncomingMessageHandler extends SimpleChannelInboundHandler<DatagramPacket> {
+        private QueryHandler queryHandler;
+        private ExecutorService taskPool;
+
+        public IncomingMessageHandler(QueryHandler queryHandler, ExecutorService taskPool) {
+            this.queryHandler = queryHandler;
+            this.taskPool = taskPool;
+        }
+
+        @Override
+        protected void messageReceived(ChannelHandlerContext context, DatagramPacket message) {
+            ByteBuf messageContent = message.content();
+            byte[] messageBytes = new byte[messageContent.readableBytes()];
+            messageContent.readBytes(messageBytes);
+            this.taskPool.submit(new QueryHandleTask(this.queryHandler, context, message, messageBytes));
+        }
+    }
+
     private IncomingMessageHandler incomingMessageHandler;
+    private ExecutorService taskPool;
 
     public Server(QueryHandler queryHandler) {
-        this.incomingMessageHandler = new IncomingMessageHandler(queryHandler);
+        this.taskPool = Executors.newCachedThreadPool();
+        this.incomingMessageHandler = new IncomingMessageHandler(queryHandler, this.taskPool);
     }
 
     public void listen(String address, int port) throws InterruptedException {
