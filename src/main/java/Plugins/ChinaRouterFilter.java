@@ -39,7 +39,7 @@ public class ChinaRouterFilter implements Plugin {
             br.close();
 
             return new ChinaRouterFilter(results);
-        } catch (IOException|IllegalArgumentException e) {
+        } catch (IOException | IllegalArgumentException e) {
             logger.error("Failed to load CIDR list");
             return null;
         }
