@@ -7,10 +7,7 @@ import Plugins.ChinaRouterFilter;
 import RequestResolver.RequestResolver;
 import Server.Server;
 import com.moandjiezana.toml.Toml;
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.Options;
+import org.apache.commons.cli.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,6 +20,18 @@ public class Chino {
     public static Toml config;
     protected static Logger logger = LoggerFactory.getLogger(Chino.class.getSimpleName());
 
+    public static CommandLine getCommandLine(String[] args) {
+        Options options = new Options();
+        options.addOption("f", "config", true, "Configuration file");
+        CommandLineParser parser = new DefaultParser();
+        try {
+            return parser.parse(options, args);
+        } catch (ParseException e) {
+            logger.error("Invalid arguments");
+            return null;
+        }
+    }
+
     public static void loadConfig(String filename) {
         try {
             try (FileReader fr = new FileReader(filename)) {
@@ -34,22 +43,20 @@ public class Chino {
         }
     }
 
-    public static void main(String[] args) throws Exception {
-        // arguments
-        Options options = new Options();
-        options.addOption("f", "config", true, "Configuration file");
-        CommandLineParser parser = new DefaultParser();
-        CommandLine cmd = parser.parse(options, args);
+    public static void main(String[] args) {
+        CommandLine cmd;
+        if ((cmd = getCommandLine(args)) == null)
+            System.exit(1);
 
         // demand argument "config"
         if (!cmd.hasOption("f")) {
-            logger.error("Config file missing");
+            logger.error("Missing configuration file");
             System.exit(1);
         }
 
         // load config toml
         loadConfig(cmd.getOptionValue("f"));
-        logger.info("Config loaded");
+        logger.info("Loaded configuration file");
 
         // setup resolver
         String cleanRemote = config.getString("remote.clean", null);
@@ -62,9 +69,9 @@ public class Chino {
         remotes.put("clean", new InetSocketAddress(config.getString("remote.clean"), 53));
         remotes.put("dirty", new InetSocketAddress(config.getString("remote.dirty"), 53));
         RequestResolver resolver = new RequestResolver(remotes, config.getLong("remote.timeout", (long) 3000).intValue(), "0.0.0.0");
-        logger.info("Remotes set to [clean={}, dirty={}]", cleanRemote, dirtyRemote);
+        logger.info("RequestResolver initialized, [clean={}, dirty={}]", cleanRemote, dirtyRemote);
 
-        // setup plugin manager
+        // construct plugin manager
         PluginManager pluginManager = new PluginManager();
 
         // setup ChinaRouteFilter
@@ -77,7 +84,7 @@ public class Chino {
         }
 
         // setup server
-        Server server = new Server(
+        new Server(
                 config.getString("listen.address", "localhost"),
                 config.getLong("listen.port", 53L).intValue(),
                 pluginManager, resolver);
