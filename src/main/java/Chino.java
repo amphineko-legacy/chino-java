@@ -14,31 +14,14 @@ import org.apache.commons.cli.Options;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 
 public class Chino {
     public static Toml config;
     protected static Logger logger = LoggerFactory.getLogger(Chino.class.getSimpleName());
-
-    public static List<String> loadChnRouteCidr(String filename) {
-        String line;
-        List<String> results = new ArrayList<>();
-        try (BufferedReader br = new BufferedReader(new FileReader(filename))) {
-            while ((line = br.readLine()) != null)
-                results.add(line);
-            br.close();
-        } catch (IOException e) {
-            logger.error("Failed to read ChinaRoute CIDR list");
-            System.exit(1);
-        }
-        return results;
-    }
 
     public static void loadConfig(String filename) {
         try {
@@ -86,7 +69,10 @@ public class Chino {
 
         // setup ChinaRouteFilter
         if (config.contains("chn-route.path")) {
-            pluginManager.add(new ChinaRouterFilter(loadChnRouteCidr(config.getString("chn-route.path"))));
+            ChinaRouterFilter plugin = ChinaRouterFilter.loadFromFile(config.getString("chn-route.path"));
+            if (plugin == null)
+                System.exit(1);
+            pluginManager.add(plugin);
             logger.info("ChinaRouteFilter setup completed");
         }
 
