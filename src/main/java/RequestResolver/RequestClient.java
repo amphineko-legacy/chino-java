@@ -45,6 +45,7 @@ public class RequestClient {
         protected void initChannel(NioDatagramChannel channel) throws Exception {
             channel.pipeline()
                     .addLast(new MessageDecoder())
+                    .addLast(new ResponseValidator())
                     .addLast(new ResponseHandler(this.subId, this.registry));
         }
     }
